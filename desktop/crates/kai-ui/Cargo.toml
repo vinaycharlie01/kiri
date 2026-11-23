@@ -1,0 +1,20 @@
+[package]
+name = "kai-ui"
+description = "Kai's native desktop views (GPUI). A driving adapter: it calls application use cases and never touches infrastructure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gpui.workspace = true
+futures.workspace = true
+kai-domain.workspace = true
+kai-application.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+kai-testkit.workspace = true
+
+[lints]
+workspace = true

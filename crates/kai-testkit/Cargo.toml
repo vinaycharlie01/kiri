@@ -1,0 +1,13 @@
+[package]
+name = "kai-testkit"
+description = "Deterministic fake adapters for the Kai platform's ports, and the architecture tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kai-domain = { path = "../kai-domain" }
+
+[lints]
+workspace = true
