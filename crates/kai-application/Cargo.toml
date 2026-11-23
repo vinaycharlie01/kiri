@@ -1,0 +1,18 @@
+[package]
+name = "kai-application"
+description = "Application layer of the Kai platform: use cases over the domain's ports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Only the domain. Adapters are never a dependency here: they are handed in
+# as `Arc<dyn Port>` by a composition root.
+[dependencies]
+kai-domain = { path = "../kai-domain" }
+
+[dev-dependencies]
+kai-testkit = { path = "../kai-testkit" }
+
+[lints]
+workspace = true

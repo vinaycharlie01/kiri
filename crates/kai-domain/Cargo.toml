@@ -1,0 +1,15 @@
+[package]
+name = "kai-domain"
+description = "Domain core of the Kai platform: entities, value objects, business rules, domain events and port traits. Depends on std only."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# No dependencies, by design: the domain must not depend on any
+# infrastructure, framework or serialization library. The architecture test
+# in kai-testkit enforces this.
+[dependencies]
+
+[lints]
+workspace = true

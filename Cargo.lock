@@ -719,6 +719,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "kai-adapter-kiri"
+version = "0.0.0"
+dependencies = [
+ "kai-application",
+ "kai-domain",
+ "serde_json",
+]
+
+[[package]]
+name = "kai-application"
+version = "0.0.0"
+dependencies = [
+ "kai-domain",
+ "kai-testkit",
+]
+
+[[package]]
+name = "kai-domain"
+version = "0.0.0"
+
+[[package]]
+name = "kai-testkit"
+version = "0.0.0"
+dependencies = [
+ "kai-domain",
+]
+
+[[package]]
 name = "kiri"
 version = "0.0.0"
 dependencies = [

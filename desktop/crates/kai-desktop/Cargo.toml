@@ -1,0 +1,22 @@
+[package]
+name = "kai-desktop"
+description = "The Kai desktop application: the composition root that wires adapters into use cases and opens the native window."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kai"
+path = "src/main.rs"
+
+[dependencies]
+gpui.workspace = true
+gpui_platform.workspace = true
+kai-domain.workspace = true
+kai-application.workspace = true
+kai-adapter-kiri.workspace = true
+kai-ui.workspace = true
+
+[lints]
+workspace = true

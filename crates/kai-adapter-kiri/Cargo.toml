@@ -1,0 +1,18 @@
+[package]
+name = "kai-adapter-kiri"
+description = "Kai's driven adapter for the Kiri engine: the ContainerRuntime and EngineEventSource ports over Kiri's Docker Engine API socket."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kai-domain = { path = "../kai-domain" }
+# Already in the workspace's lockfile (the kiri crate uses it): no new crates.
+serde_json = "1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+kai-application = { path = "../kai-application" }

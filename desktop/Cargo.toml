@@ -1,0 +1,44 @@
+# The Kai native desktop: its own workspace, on purpose.
+#
+# GPUI brings ~500 crates and a GPU toolchain. Keeping it out of the root
+# workspace means upstream Kiri's lockfile, `cargo test --workspace`, static
+# musl builds, cargo-deny licence checks and release builds are untouched.
+# The desktop depends on the core Kai crates in ../crates by path.
+# See docs/ai-platform/HEXAGONAL_ARCHITECTURE.md (ADR-2).
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# GPUI, Zed's native GPU UI framework, from its community-maintained fork on
+# crates.io. Zed's own crates.io release (gpui 0.2.2) no longer resolves
+# against current crates (xattr vs libc); see docs/ai-platform/FRONTEND_MIGRATION_PLAN.md.
+# Exact pins: GPUI's API moves between minor versions.
+gpui = { package = "gpui-ce", version = "=0.3.0", default-features = false, features = ["font-kit", "wayland", "x11", "windows-manifest"] }
+gpui_platform = { package = "gpui_ce_platform", version = "=0.3.0" }
+futures = "0.3"
+
+kai-domain = { path = "../crates/kai-domain" }
+kai-application = { path = "../crates/kai-application" }
+kai-adapter-kiri = { path = "../crates/kai-adapter-kiri" }
+kai-testkit = { path = "../crates/kai-testkit" }
+kai-ui = { path = "crates/kai-ui" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
