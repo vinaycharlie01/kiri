@@ -87,10 +87,7 @@ Kai needs Rust **1.95 or newer**. If yours is older: `rustup update stable`.
 ```sh
 git clone https://github.com/vinaycharlie01/kiri.git
 cd kiri
-git checkout ccr-9cbb0820-vdtpou
 ```
-
-(Once the pull request is merged, skip the `git checkout` line.)
 
 ## Step 6 — Build and open Kai
 
