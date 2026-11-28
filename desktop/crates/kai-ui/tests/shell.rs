@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use gpui::TestApp;
-use kai_application::{ActivityFeed, ContainerService};
+use kai_application::{ActivityFeed, ContainerService, EngineService};
 use kai_domain::{ContainerAction, ContainerId, ContainerState, RuntimeError};
-use kai_testkit::{FakeEvents, FakeRuntime, FixedClock, container};
+use kai_testkit::{FakeEvents, FakeLauncher, FakeRuntime, FixedClock, container};
 use kai_ui::model::{RowButton, Section};
 use kai_ui::{Notice, Services, Shell, ShellOptions};
 
@@ -32,6 +32,14 @@ fn harness() -> Harness {
 }
 
 fn services(h: &Harness) -> Services {
+    services_with(h, None)
+}
+
+fn services_with(h: &Harness, launcher: Option<Arc<FakeLauncher>>) -> Services {
+    let engine = Arc::new(EngineService::new(
+        h.runtime.clone(),
+        launcher.map(|l| l as Arc<dyn kai_domain::EngineLauncher>),
+    ));
     let containers = Arc::new(ContainerService::new(
         h.runtime.clone(),
         Arc::new(FakeEvents::default()),
@@ -41,6 +49,7 @@ fn services(h: &Harness) -> Services {
     Services {
         containers,
         activity: h.activity.clone(),
+        engine,
     }
 }
 
@@ -200,4 +209,57 @@ fn renders_both_sections_without_panicking() {
         shell.press(id("old"), RowButton::Action(ContainerAction::Remove), cx);
     });
     window.draw();
+}
+
+#[test]
+fn opening_kai_starts_the_engine_it_ships_with() {
+    let mut h = harness();
+    h.runtime.set_reachable(false);
+    let launcher = Arc::new(FakeLauncher::starting(h.runtime.clone()));
+    let s = services_with(&h, Some(launcher.clone()));
+    let window = h
+        .app
+        .open_window(|window, cx| Shell::new(s, QUIET, window, cx));
+    h.app.run_until_parked();
+    assert_eq!(launcher.launches(), 1);
+    window.read(|shell, _| {
+        assert!(!shell.is_starting_engine());
+        assert_eq!(
+            shell.notice(),
+            Some(&Notice::Done("Started Kiri fake".into()))
+        );
+        assert_eq!(shell.containers().len(), 2, "the list came after the start");
+    });
+}
+
+#[test]
+fn an_engine_already_running_is_not_started_again() {
+    let mut h = harness();
+    let launcher = Arc::new(FakeLauncher::starting(h.runtime.clone()));
+    let s = services_with(&h, Some(launcher.clone()));
+    let window = h
+        .app
+        .open_window(|window, cx| Shell::new(s, QUIET, window, cx));
+    h.app.run_until_parked();
+    assert_eq!(launcher.launches(), 0);
+    window.read(|shell, _| assert_eq!(shell.notice(), None));
+}
+
+#[test]
+fn a_failed_start_says_why() {
+    let mut h = harness();
+    h.runtime.set_reachable(false);
+    let s = services_with(
+        &h,
+        Some(Arc::new(FakeLauncher::failing("the VM did not boot"))),
+    );
+    let window = h
+        .app
+        .open_window(|window, cx| Shell::new(s, QUIET, window, cx));
+    h.app.run_until_parked();
+    window.read(|shell, _| {
+        assert!(
+            matches!(shell.notice(), Some(Notice::Failed(m)) if m.contains("the VM did not boot"))
+        );
+    });
 }

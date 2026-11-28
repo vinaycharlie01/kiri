@@ -15,8 +15,12 @@
 
 #[cfg(unix)]
 mod http;
+#[cfg(unix)]
+mod launcher;
 mod mapping;
 
+#[cfg(unix)]
+pub use launcher::KiriLauncher;
 #[cfg(unix)]
 pub use unix::KiriEngine;
 

@@ -1,0 +1,138 @@
+# Kai.app for macOS: the one-app install (the Kai desktop with Kiri's engine
+# inside), packed as a DMG.
+#
+# Two jobs, because the guest needs Linux tools and the app needs a Mac:
+#   guest  (Linux)  the arm64 guest kernel (cross-compiled in Debian) and the
+#                   64 GiB sparse disk template, as `cargo xtask kernel` and
+#                   `cargo xtask disk` build them
+#   app    (macOS)  kiri-init, Kiri's engine, the Kai desktop, the bundled
+#                   docker tools, and Kai-<version>-arm64.dmg (cargo xtask kai-dmg)
+#
+# The DMG is an artifact of every run. A `kai-v*` tag also attaches it to a
+# GitHub release. Signed ad hoc unless KIRI_SIGN_IDENTITY is configured, so
+# macOS asks once before opening it (desktop/README.md says how).
+name: Kai macOS app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['kai-v*']
+    paths:
+      - 'crates/**'
+      - 'desktop/**'
+      - 'guest/**'
+      - 'xtask/**'
+      - 'Cargo.lock'
+      - '.github/workflows/kai-macos.yml'
+  pull_request:
+    paths:
+      - 'crates/kai-*/**'
+      - 'desktop/**'
+      - 'xtask/**'
+      - '.github/workflows/kai-macos.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kai-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The kernel only changes with guest/kernel: build it once per change.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: kernel
+        with:
+          path: guest/out/Image
+          key: kai-kernel-arm64-${{ hashFiles('guest/kernel/**') }}
+      - name: Kernel (arm64, cross-compiled in Debian)
+        if: steps.kernel.outputs.cache-hit != 'true'
+        run: cargo xtask kernel
+      - name: Disk template
+        run: cargo xtask disk
+      # Sparse in the tarball: 64 GiB on paper, a few hundred KB here.
+      - name: Pack the guest
+        run: |
+          mkdir -p "$RUNNER_TEMP/guest"
+          cp guest/out/Image "$RUNNER_TEMP/guest/"
+          sudo tar -cSzf "$RUNNER_TEMP/guest/data.img.tgz" -C guest/out data.img
+          sudo chown "$USER" "$RUNNER_TEMP/guest/data.img.tgz"
+          ls -la "$RUNNER_TEMP/guest"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kai-guest-arm64
+          path: ${{ runner.temp }}/guest
+          retention-days: 3
+
+  app:
+    needs: guest
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: kai-guest-arm64
+          path: ${{ runner.temp }}/guest
+      - name: Unpack the guest
+        run: |
+          mkdir -p guest/out
+          cp "$RUNNER_TEMP/guest/Image" guest/out/
+          tar -xSzf "$RUNNER_TEMP/guest/data.img.tgz" -C guest/out
+          ls -la guest/out
+      - name: Rust targets
+        run: rustup target add aarch64-unknown-linux-musl
+      - name: The guest agent (kiri-init) and its initramfs
+        run: cargo xtask guest
+      - name: Kai.app and its DMG
+        run: cargo xtask kai-dmg
+      - name: Check the bundle
+        run: |
+          app=target/Kai.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist" | grep -qx kai
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" | grep -qx dev.kai.desktop
+          for f in MacOS/kai MacOS/kiri Resources/guest/Image Resources/guest/initramfs.cpio Resources/guest/data.img.tgz Resources/bin/docker; do
+            test -s "$app/Contents/$f" || { echo "missing: $f"; exit 1; }
+          done
+          ent=$(codesign -d --entitlements - "$app/Contents/MacOS/kiri" 2>&1)
+          grep -q com.apple.security.virtualization <<< "$ent" || { echo "kiri lost its entitlement"; exit 1; }
+          codesign --verify --deep --strict "$app"
+          # Kai runs at all on macOS (a usage error exits before any window).
+          out=$("$app/Contents/MacOS/kai" --nope 2>&1 || true)
+          grep -q '^kai: usage:' <<< "$out" || { echo "$out"; exit 1; }
+          du -sh "$app" target/Kai-*.dmg | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Kai-macOS-arm64
+          path: target/Kai-*.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/kai-v')
+    needs: app
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Kai-macOS-arm64
+          path: dmg
+      - name: Attach the DMG to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Kai $TAG" --notes "Kai for macOS (Apple silicon): open the DMG and drag Kai to Applications."
+          gh release upload "$TAG" dmg/*.dmg --repo "$GITHUB_REPOSITORY" --clobber
