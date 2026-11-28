@@ -18,8 +18,8 @@ use gpui::{
     Stateful, Subscription, Task, Window, actions, div, px, rgb,
 };
 use kai_application::{
-    ActivityFeed, ContainerActionRequest, ContainerList, ContainerService, EngineStatus,
-    ListContainers,
+    ActivityFeed, ContainerActionRequest, ContainerList, ContainerService, EngineService,
+    EngineStart, EngineStatus, ListContainers,
 };
 use kai_domain::{Container, ContainerAction, ContainerId, ContainerState};
 
@@ -45,6 +45,7 @@ pub fn bind_keys(cx: &mut App) {
 pub struct Services {
     pub containers: Arc<ContainerService>,
     pub activity: Arc<ActivityFeed>,
+    pub engine: Arc<EngineService>,
 }
 
 impl std::fmt::Debug for Services {
@@ -93,6 +94,8 @@ pub struct Shell {
     notice: Option<Notice>,
     refreshing: Option<Task<()>>,
     refresh_again: bool,
+    /// Kai is starting the engine it ships with.
+    starting_engine: bool,
     theme: ThemePreference,
     _appearance: Subscription,
     _background: Vec<Task<()>>,
@@ -143,11 +146,16 @@ impl Shell {
             notice: None,
             refreshing: None,
             refresh_again: false,
+            starting_engine: false,
             theme: options.theme,
             _appearance: appearance,
             _background: background,
         };
-        shell.refresh(cx);
+        if shell.services.engine.can_start() {
+            shell.start_engine(cx);
+        } else {
+            shell.refresh(cx);
+        }
         shell
     }
 
@@ -228,6 +236,47 @@ impl Shell {
                 cx.notify();
             });
         }));
+    }
+
+    /// StartEngine: starts the engine Kai ships with if it is not running,
+    /// then refreshes. Does nothing while a start is under way.
+    pub fn start_engine(&mut self, cx: &mut Context<Self>) {
+        if self.starting_engine {
+            return;
+        }
+        self.starting_engine = true;
+        cx.notify();
+        let engine = self.services.engine.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move { engine.ensure_running() })
+                .await;
+            let _ = this.update(cx, |s, cx| {
+                s.starting_engine = false;
+                match result {
+                    Ok(EngineStart::Started(info)) => {
+                        s.notice = Some(Notice::Done(format!(
+                            "Started Kiri {}",
+                            info.engine_version
+                        )))
+                    }
+                    Ok(EngineStart::AlreadyRunning(_)) => {}
+                    Ok(EngineStart::NotRunning(why)) => s.notice = Some(Notice::Failed(why)),
+                    Err(e) => {
+                        s.notice = Some(Notice::Failed(format!(
+                            "Could not start Kiri's engine: {e}"
+                        )))
+                    }
+                }
+                s.refresh(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn is_starting_engine(&self) -> bool {
+        self.starting_engine
     }
 
     pub fn show(&mut self, section: Section, cx: &mut Context<Self>) {
@@ -509,7 +558,7 @@ impl Shell {
                 .bg(Theme::tint(colour, 0x1f))
                 .text_sm()
                 .text_color(rgb(theme.text))
-                .child(text)
+                .child(div().flex_1().min_w(px(0.)).child(text))
                 .child(
                     div()
                         .id("dismiss")
@@ -544,8 +593,12 @@ impl Shell {
             )
     }
 
-    fn overview(&self, theme: &Theme) -> AnyElement {
+    fn overview(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let can_start = self.services.engine.can_start();
         let engine = match &self.status {
+            _ if self.starting_engine => Self::card(theme, "Engine")
+                .child(div().text_lg().text_color(rgb(theme.text)).child("Starting Kiri's engine…"))
+                .child(div().text_sm().text_color(rgb(theme.muted)).child("The first start sets Kiri up; it takes a few seconds.")),
             None => Self::card(theme, "Engine")
                 .child(div().text_color(rgb(theme.muted)).child("Connecting…")),
             Some(EngineStatus::Connected(info)) => Self::card(theme, "Engine")
@@ -572,9 +625,19 @@ impl Shell {
                         .text_color(rgb(theme.muted))
                         .child(why.clone()),
                 )
-                .child(div().text_sm().text_color(rgb(theme.muted)).child(
-                    "Start Kiri (open the app, or run `kiri daemon`). Kai reconnects by itself.",
-                )),
+                .child(div().text_sm().text_color(rgb(theme.muted)).child(if can_start {
+                    "Kai includes Kiri's engine: start it here."
+                } else {
+                    "Start Kiri (open the app, or run `kiri daemon`). Kai reconnects by itself."
+                }))
+                .when(can_start, |card| {
+                    card.child(
+                        div().flex().child(
+                            button(theme, "start-engine".into(), "Start engine", false)
+                                .on_click(cx.listener(|s, _, _, cx| s.start_engine(cx))),
+                        ),
+                    )
+                }),
         };
         let total = self.list.containers.len();
         let containers = Self::card(theme, "Containers")
@@ -619,7 +682,7 @@ impl Shell {
                 div()
                     .flex()
                     .gap_4()
-                    .child(engine.flex_1())
+                    .child(engine.flex_1().min_w(px(0.)))
                     .child(containers.w(px(260.))),
             )
             .child(activity)
@@ -801,6 +864,7 @@ impl Shell {
 
     fn status_bar(&self, theme: &Theme) -> impl IntoElement {
         let (colour, text) = match &self.status {
+            _ if self.starting_engine => (theme.warn, "Starting Kiri's engine…".to_owned()),
             None => (theme.faint, "Connecting to Kiri…".to_owned()),
             Some(EngineStatus::Connected(i)) => (
                 theme.ok,
@@ -835,7 +899,7 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.theme.resolve(window.appearance());
         let content = match self.section {
-            Section::Overview => self.overview(&theme),
+            Section::Overview => self.overview(&theme, cx),
             Section::Containers => self.containers_view(&theme, cx),
         };
         div()

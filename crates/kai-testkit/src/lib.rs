@@ -13,9 +13,11 @@ use std::ops::ControlFlow;
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
+use std::sync::Arc;
+
 use kai_domain::{
     Clock, Container, ContainerAction, ContainerId, ContainerRuntime, ContainerState, DomainEvent,
-    EngineEvent, EngineEventSource, EngineInfo, EventPublisher, RuntimeError,
+    EngineEvent, EngineEventSource, EngineInfo, EngineLauncher, EventPublisher, RuntimeError,
 };
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -223,6 +225,54 @@ impl FixedClock {
 impl Clock for FixedClock {
     fn now(&self) -> SystemTime {
         self.0
+    }
+}
+
+/// An [`EngineLauncher`] that "starts" a [`FakeRuntime`] by making it
+/// reachable, or fails as told. Counts its launches.
+#[derive(Debug)]
+pub struct FakeLauncher {
+    starts: Option<Arc<FakeRuntime>>,
+    failure: Option<String>,
+    launches: Mutex<usize>,
+}
+
+impl FakeLauncher {
+    pub fn starting(runtime: Arc<FakeRuntime>) -> Self {
+        Self {
+            starts: Some(runtime),
+            failure: None,
+            launches: Mutex::new(0),
+        }
+    }
+
+    pub fn failing(reason: &str) -> Self {
+        Self {
+            starts: None,
+            failure: Some(reason.to_owned()),
+            launches: Mutex::new(0),
+        }
+    }
+
+    pub fn launches(&self) -> usize {
+        *lock(&self.launches)
+    }
+}
+
+impl EngineLauncher for FakeLauncher {
+    fn launch(&self) -> Result<(), RuntimeError> {
+        *lock(&self.launches) += 1;
+        if let Some(reason) = &self.failure {
+            return Err(RuntimeError::Engine(reason.clone()));
+        }
+        if let Some(rt) = &self.starts {
+            rt.set_reachable(true);
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        "fake engine".into()
     }
 }
 

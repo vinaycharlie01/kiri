@@ -85,3 +85,16 @@ pub trait EventPublisher: Send + Sync {
 pub trait Clock: Send + Sync {
     fn now(&self) -> SystemTime;
 }
+
+/// Starts the container engine when it is not running: the engine Kai ships
+/// with, in the one-app install. Optional: without a launcher, Kai only
+/// connects to an engine someone else started.
+pub trait EngineLauncher: Send + Sync {
+    /// Starts the engine in the background and returns once it answers, or
+    /// with an error saying why it did not. The engine keeps running after
+    /// the caller exits.
+    fn launch(&self) -> Result<(), RuntimeError>;
+
+    /// What is started, for display ("Kiri at /Applications/Kai.app/…").
+    fn describe(&self) -> String;
+}

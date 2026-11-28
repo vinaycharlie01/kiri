@@ -22,4 +22,6 @@ pub use container::{
 };
 pub use engine::{EngineEvent, EngineInfo};
 pub use event::DomainEvent;
-pub use ports::{Clock, ContainerRuntime, EngineEventSource, EventPublisher, RuntimeError};
+pub use ports::{
+    Clock, ContainerRuntime, EngineEventSource, EngineLauncher, EventPublisher, RuntimeError,
+};

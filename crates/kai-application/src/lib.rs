@@ -8,6 +8,7 @@
 
 pub mod activity;
 pub mod containers;
+pub mod engine;
 mod error;
 
 pub use activity::ActivityFeed;
@@ -15,4 +16,5 @@ pub use containers::{
     ActionOutcome, ContainerActionRequest, ContainerList, ContainerService, EngineStatus,
     ListContainers, WatchNotice,
 };
+pub use engine::{EngineService, EngineStart};
 pub use error::AppError;

@@ -191,9 +191,12 @@ fn main() -> ExitCode {
         "sign" => sign_app(&root, &root.join(arch.app_dir(false)), arch, false, Profile::Release),
         // Packs the app already built, without rebuilding it.
         "pack" => release(&root, &root.join(arch.app_dir(false)), arch),
+        // Kai.app: the Kai desktop with Kiri's engine inside (xtask/src/kai.rs).
+        "kai-app" => kai::kai_app(&root, arch).map(drop),
+        "kai-dmg" => kai::kai_app(&root, arch).and_then(|a| kai::kai_dmg(&root, &a, arch)).map(drop),
         "all" => guest(&root, arch).and_then(|()| host(&root, arch, Profile::Release)),
         _ => {
-            eprintln!("usage: cargo xtask <guest|kernel|disk|host|linux|linux-dev|windows|windows-dev|msi|msi-pack|docker-win-arm64|app|app-lite|app-dev|release|sign|pack|all> [--arch arm64]");
+            eprintln!("usage: cargo xtask <guest|kernel|disk|host|linux|linux-dev|windows|windows-dev|msi|msi-pack|docker-win-arm64|app|app-lite|app-dev|kai-app|kai-dmg|release|sign|pack|all> [--arch arm64]");
             return ExitCode::FAILURE;
         }
     };
@@ -700,6 +703,7 @@ fn msi(root: &Path, arch: WinArch) -> io::Result<()> {
 /// as download.docker.com served it), checked before anything is bundled.
 #[path = "../../crates/kiri/src/cli_pins.rs"]
 mod cli_pins;
+mod kai;
 mod macho;
 use cli_pins::{WIN_ARM64_BUILDX, WIN_ARM64_COMPOSE, WIN_ARM64_DOCKER_SRC, WIN_BUILDX, WIN_COMPOSE, WIN_DOCKER_CLI};
 
